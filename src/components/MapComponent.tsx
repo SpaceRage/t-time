@@ -66,8 +66,8 @@ const MapComponent: React.FC = () => {
       mapRef.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: "mapbox://styles/mapbox/dark-v11",
-        center: [-71.0589, 42.3601], // Center of the map set to Boston
-        zoom: 10, // Zoom level set to 12 for a good view of the city
+        center: [-71.0989, 42.3399], // Center of the map set to Boston
+        zoom: 11, // Zoom level set to 12 for a good view of the city
       });
 
       // Add zoom controls
@@ -139,8 +139,8 @@ const MapComponent: React.FC = () => {
 
       // Create a new HTML element for the marker
       const markerElement = document.createElement("div");
-      markerElement.style.width = "8px"; // Set the width of the marker
-      markerElement.style.height = "8px"; // Set the height of the marker
+      markerElement.style.width = "6px"; // Set the width of the marker
+      markerElement.style.height = "6px"; // Set the height of the marker
       markerElement.style.opacity = "0.01"; // Set the opacity of the marker
       markerElement.style.backgroundImage = `url('https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/MBTA.svg/1200px-MBTA.svg.png')`; // Set the image URL
       markerElement.style.backgroundSize = "contain"; // Make sure the image fits the marker
@@ -199,6 +199,8 @@ const MapComponent: React.FC = () => {
 
         if (currentColor !== markerColor) {
           currentSVG.querySelector("circle")!.setAttribute("fill", markerColor);
+          // Make z-index higher to make sure the marker is visible
+          currentSVG.style.zIndex = "100";
         }
       }
     });
