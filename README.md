@@ -10,6 +10,8 @@ To be added:
 - Filter by line
 - Route creation/planning
 
+*Currently learning/fixing using info streams instead of repeated API calls...it's taking its time*
+
 ### To use
 
 Visit https://t-time.vercel.app to see the in-progress remake.
