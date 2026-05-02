@@ -50,6 +50,9 @@ lineFeatures.features.forEach((feature) => {
 
 type Coord = [number, number];
 
+type RapidLineFeature = (typeof lineFeatures.features)[number];
+type CommuterLineFeature = (typeof commuterFeatures.features)[number];
+
 const sqDistance = (a: Coord, b: Coord) => {
   const dx = a[0] - b[0];
   const dy = a[1] - b[1];
@@ -72,16 +75,99 @@ const nearestPointOnSegment = (p: Coord, a: Coord, b: Coord): Coord => {
   return [a[0] + t * abx, a[1] + t * aby];
 };
 
-const rapidRailLineCoordinateSets: Coord[][] = lineFeatures.features
-  .filter((feature) => feature.geometry.type === "LineString")
-  .map(
-    (feature) =>
-      (feature.geometry as unknown as { coordinates: Coord[] }).coordinates,
+const normalizeBearing = (bearing: number) => ((bearing % 360) + 360) % 360;
+
+const angularDistance = (a: number, b: number) => {
+  const diff = Math.abs(normalizeBearing(a) - normalizeBearing(b));
+  return Math.min(diff, 360 - diff);
+};
+
+const getSegmentBearing = (start: Coord, end: Coord) => {
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const toDegrees = (value: number) => (value * 180) / Math.PI;
+
+  const startLng = toRadians(start[0]);
+  const startLat = toRadians(start[1]);
+  const endLng = toRadians(end[0]);
+  const endLat = toRadians(end[1]);
+  const deltaLng = endLng - startLng;
+
+  const y = Math.sin(deltaLng) * Math.cos(endLat);
+  const x =
+    Math.cos(startLat) * Math.sin(endLat) -
+    Math.sin(startLat) * Math.cos(endLat) * Math.cos(deltaLng);
+
+  return normalizeBearing(toDegrees(Math.atan2(y, x)));
+};
+
+const snapBearingToLineDirection = (
+  lineBearing: number,
+  receivedBearing?: number,
+) => {
+  if (
+    typeof receivedBearing !== "number" ||
+    !Number.isFinite(receivedBearing)
+  ) {
+    return normalizeBearing(lineBearing);
+  }
+
+  const forwardBearing = normalizeBearing(lineBearing);
+  const reverseBearing = normalizeBearing(lineBearing + 180);
+
+  return angularDistance(forwardBearing, receivedBearing) <=
+    angularDistance(reverseBearing, receivedBearing)
+    ? forwardBearing
+    : reverseBearing;
+};
+
+const getNearestRailPointAndBearing = (
+  point: Coord,
+  routeId?: string,
+): { point: Coord; bearing: number } => {
+  const railLineCoordinateSets = routeId
+    ? routeId.startsWith("CR")
+      ? commuterRailLineCoordinateSets
+      : getRapidRailLineCoordinateSetsForRoute(routeId)
+    : allRailLineCoordinateSets;
+
+  let bestPoint: Coord = point;
+  let bestBearing = 0;
+  let bestDistSq = Number.POSITIVE_INFINITY;
+
+  railLineCoordinateSets.forEach((lineCoords) => {
+    for (let i = 0; i < lineCoords.length - 1; i++) {
+      const segmentStart = lineCoords[i];
+      const segmentEnd = lineCoords[i + 1];
+      const candidate = nearestPointOnSegment(point, segmentStart, segmentEnd);
+      const candidateDistSq = sqDistance(point, candidate);
+
+      if (candidateDistSq < bestDistSq) {
+        bestDistSq = candidateDistSq;
+        bestPoint = candidate;
+        bestBearing = getSegmentBearing(segmentStart, segmentEnd);
+      }
+    }
+  });
+
+  return { point: bestPoint, bearing: bestBearing };
+};
+
+const rapidRailLineFeatures: RapidLineFeature[] = lineFeatures.features.filter(
+  (feature) => feature.geometry.type === "LineString",
+);
+
+const rapidRailLineCoordinateSets: Coord[][] = rapidRailLineFeatures.map(
+  (feature) =>
+    (feature.geometry as unknown as { coordinates: Coord[] }).coordinates,
+);
+
+const commuterRailLineFeatures: CommuterLineFeature[] =
+  commuterFeatures.features.filter(
+    (feature) => feature.geometry.type === "MultiLineString",
   );
 
-const commuterRailLineCoordinateSets: Coord[][] = commuterFeatures.features
-  .filter((feature) => feature.geometry.type === "MultiLineString")
-  .flatMap(
+const commuterRailLineCoordinateSets: Coord[][] =
+  commuterRailLineFeatures.flatMap(
     (feature) =>
       (feature.geometry as unknown as { coordinates: Coord[][] }).coordinates,
   );
@@ -91,32 +177,90 @@ const allRailLineCoordinateSets: Coord[][] = [
   ...commuterRailLineCoordinateSets,
 ];
 
-const findNearestPointOnRail = (point: Coord, routeId?: string): Coord => {
-  const railLineCoordinateSets = routeId
-    ? routeId.startsWith("CR")
-      ? commuterRailLineCoordinateSets
-      : rapidRailLineCoordinateSets
-    : allRailLineCoordinateSets;
+const getRapidRailLineCoordinateSetsForRoute = (
+  routeId?: string,
+): Coord[][] => {
+  if (!routeId) {
+    return rapidRailLineCoordinateSets;
+  }
 
-  let bestPoint: Coord = point;
-  let bestDistSq = Number.POSITIVE_INFINITY;
+  const matchingFeatures = rapidRailLineFeatures.filter((feature) => {
+    const properties = feature.properties as {
+      LINE?: string;
+      ROUTE?: string;
+    };
 
-  railLineCoordinateSets.forEach((lineCoords) => {
-    for (let i = 0; i < lineCoords.length - 1; i++) {
-      const candidate = nearestPointOnSegment(
-        point,
-        lineCoords[i],
-        lineCoords[i + 1],
-      );
-      const candidateDistSq = sqDistance(point, candidate);
-      if (candidateDistSq < bestDistSq) {
-        bestDistSq = candidateDistSq;
-        bestPoint = candidate;
-      }
+    if (routeId === "Red") {
+      return properties.LINE === "RED";
     }
+
+    if (routeId === "Orange") {
+      return properties.LINE === "ORANGE";
+    }
+
+    if (routeId === "Blue") {
+      return properties.LINE === "BLUE";
+    }
+
+    if (routeId.startsWith("Green-")) {
+      const branch = routeId.split("-")[1]?.[0];
+      return (
+        properties.LINE === "GREEN" &&
+        !!branch &&
+        properties.ROUTE?.includes(branch)
+      );
+    }
+
+    return false;
   });
 
-  return bestPoint;
+  return matchingFeatures.length
+    ? matchingFeatures.map(
+        (feature) =>
+          (feature.geometry as unknown as { coordinates: Coord[] }).coordinates,
+      )
+    : rapidRailLineCoordinateSets;
+};
+
+const findNearestPointOnRail = (point: Coord, routeId?: string): Coord => {
+  return getNearestRailPointAndBearing(point, routeId).point;
+};
+
+const haversineDistanceMeters = (a: Coord, b: Coord) => {
+  const earthRadiusMeters = 6371000;
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+
+  const lat1 = toRadians(a[1]);
+  const lat2 = toRadians(b[1]);
+  const deltaLat = toRadians(b[1] - a[1]);
+  const deltaLng = toRadians(b[0] - a[0]);
+
+  const sinLat = Math.sin(deltaLat / 2);
+  const sinLng = Math.sin(deltaLng / 2);
+  const aTerm =
+    sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+  const cTerm = 2 * Math.atan2(Math.sqrt(aTerm), Math.sqrt(1 - aTerm));
+
+  return earthRadiusMeters * cTerm;
+};
+
+const getAnimationDurationMs = (
+  startPoint: Coord,
+  endPoint: Coord,
+  speedMetersPerSecond: number | null,
+  fallbackDurationMs: number,
+) => {
+  if (
+    typeof speedMetersPerSecond !== "number" ||
+    !Number.isFinite(speedMetersPerSecond) ||
+    speedMetersPerSecond <= 0
+  ) {
+    return fallbackDurationMs;
+  }
+
+  const distanceMeters = haversineDistanceMeters(startPoint, endPoint);
+
+  return Math.max((distanceMeters / speedMetersPerSecond) * 1000, 250);
 };
 
 interface MarkerAnimationState {
@@ -126,6 +270,8 @@ interface MarkerAnimationState {
   targetLng: number;
   startTime: number;
   duration: number; // milliseconds
+  routeId: string;
+  bearing: number;
 }
 
 const MapComponent: React.FC = () => {
@@ -272,7 +418,14 @@ const MapComponent: React.FC = () => {
         state.startLng + (state.targetLng - state.startLng) * progress;
       const currentLat =
         state.startLat + (state.targetLat - state.startLat) * progress;
-      marker.setLngLat([currentLng, currentLat]);
+      const snappedRailState = getNearestRailPointAndBearing(
+        [currentLng, currentLat],
+        state.routeId,
+      );
+      marker.setLngLat(snappedRailState.point);
+      marker.setRotation(
+        snapBearingToLineDirection(snappedRailState.bearing, state.bearing),
+      );
 
       // Remove animation state when complete
       if (progress >= 1) {
@@ -290,11 +443,16 @@ const MapComponent: React.FC = () => {
   const updateMarkers = () => {
     vehicles.forEach((vehicle) => {
       const { id, attributes, relationships } = vehicle;
-      const { latitude, longitude, bearing } = attributes;
+      const { latitude, longitude, bearing, speed } = attributes;
       const routeId = relationships.route.data.id;
-      const [snappedLng, snappedLat] = findNearestPointOnRail(
+      const snappedRailState = getNearestRailPointAndBearing(
         [longitude, latitude],
         routeId,
+      );
+      const [snappedLng, snappedLat] = snappedRailState.point;
+      const snappedBearing = snapBearingToLineDirection(
+        snappedRailState.bearing,
+        bearing,
       );
 
       // Determine marker color based on route ID
@@ -308,6 +466,7 @@ const MapComponent: React.FC = () => {
             .documentElement,
         })
           .setLngLat([snappedLng, snappedLat])
+          .setRotation(snappedBearing)
           .setPopup(new mapboxgl.Popup().setText(vehicle.attributes.label))
           .addTo(mapRef.current!);
         markersRef.current[id] = marker;
@@ -319,6 +478,8 @@ const MapComponent: React.FC = () => {
           targetLng: snappedLng,
           startTime: now,
           duration: 0,
+          routeId,
+          bearing: snappedBearing,
         };
       } else {
         // If marker exists, set up animation to new position
@@ -333,27 +494,38 @@ const MapComponent: React.FC = () => {
         const lastUpdateTime = motionInfo?.lastUpdated?.getTime() ?? now;
         const timeSinceUpdate = now - lastUpdateTime;
 
-        // Estimate the animation duration based on time since last update
-        // We'll animate over the expected time until the next update
-        // Assuming updates come roughly every 4-5 seconds
-        const expectedUpdateInterval = 5000; // 5 seconds
-        const animationDuration = Math.min(
-          expectedUpdateInterval,
+        // Estimate the animation duration from the latest reported speed.
+        // When speed is unavailable, fall back to the previous timing heuristic.
+        const fallbackDuration = Math.min(
+          5000,
           Math.max(500, timeSinceUpdate * 0.8),
-        ); // Animate over 80% of the expected update interval
+        );
 
         // Set up animation state
+        const projectedStart = findNearestPointOnRail(
+          [currentPos.lng, currentPos.lat],
+          routeId,
+        );
+        const animationDuration = getAnimationDurationMs(
+          projectedStart,
+          [snappedLng, snappedLat],
+          speed,
+          fallbackDuration,
+        );
+
         animationStateRef.current[id] = {
-          startLat: currentPos.lat,
-          startLng: currentPos.lng,
+          startLat: projectedStart[1],
+          startLng: projectedStart[0],
           targetLat: snappedLat,
           targetLng: snappedLng,
           startTime: now,
           duration: animationDuration,
+          routeId,
+          bearing: snappedBearing,
         };
 
         // Update rotation immediately
-        marker.setRotation(bearing);
+        marker.setRotation(snappedBearing);
 
         // Update the marker's SVG if the color has changed
         const currentSVG = marker.getElement();
