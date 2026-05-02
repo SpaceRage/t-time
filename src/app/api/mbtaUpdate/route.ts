@@ -31,17 +31,19 @@ export async function GET(req: NextRequest) {
               if (!message.trim()) return;
 
               let eventType = "message";
-              let data = "";
+              const dataLines: string[] = [];
 
-              // Parse SSE format
+              // Parse SSE format (multiple data: lines can form one message)
               const lines = message.split("\n");
               lines.forEach((line) => {
                 if (line.startsWith("event:")) {
                   eventType = line.substring(6).trim();
                 } else if (line.startsWith("data:")) {
-                  data = line.substring(5).trim();
+                  dataLines.push(line.substring(5).trim());
                 }
               });
+
+              const data = dataLines.join("\n");
 
               if (data) {
                 // Send as standardized message format

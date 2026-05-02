@@ -146,9 +146,7 @@ export function VehicleProvider({ children }: { children: React.ReactNode }) {
             lastUpdated: new Date(),
           };
         });
-      } catch (error) {
-        console.error("Error parsing vehicle data:", error);
-      }
+      } catch (error) {}
     };
 
     // Listen for 'message' events (default SSE event type)
