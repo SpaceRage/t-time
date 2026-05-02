@@ -1,8 +1,10 @@
 "use client";
 
 import MapComponent from "@/components/MapComponent";
-import { useVehicles, Vehicle } from "@/contexts/VehicleContext";
-import { useEffect, useRef } from "react";
+import MapDetails from "@/components/MapDetails";
+import { useVehicles } from "@/contexts/VehicleContext";
+import { Vehicle } from "@/types/vehicle";
+import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
   const { vehicles, isInitialized, lastUpdated, vehicleCount } = useVehicles();
@@ -11,6 +13,8 @@ export default function Home() {
   if (!mbInit) {
     throw new Error("Mapbox API key not found");
   }
+
+  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
 
   // Highlight updates
   useEffect(() => {
@@ -25,5 +29,10 @@ export default function Home() {
     });
   }, [vehicles]);
 
-  return <MapComponent />;
+  return (
+    <div style={{ position: "relative", height: "100dvh" }}>
+      <MapComponent setSelectedVehicle={setSelectedVehicle} />
+      <MapDetails vehicle={selectedVehicle} />
+    </div>
+  );
 }

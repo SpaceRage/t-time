@@ -1,4 +1,5 @@
 import { useVehicles } from "@/contexts/VehicleContext"; // Adjust the path as necessary
+import { Vehicle } from "@/types/vehicle";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import React, { useEffect, useRef } from "react";
@@ -278,7 +279,11 @@ interface MarkerAnimationState {
   lastSnappedBearing: number;
 }
 
-const MapComponent: React.FC = () => {
+interface MapComponentProps {
+  setSelectedVehicle: React.Dispatch<React.SetStateAction<Vehicle | null>>;
+}
+
+const MapComponent: React.FC<MapComponentProps> = ({ setSelectedVehicle }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const { vehicles, motionData, lastUpdated } = useVehicles();
@@ -300,7 +305,17 @@ const MapComponent: React.FC = () => {
         style: "mapbox://styles/mapbox/dark-v11",
         center: [-71.0989, 42.3399], // Center of the map set to Boston
         zoom: 11, // Zoom level set to 12 for a good view of the city
+        attributionControl: false, // Disable default attribution control to add custom one
       });
+
+      // Add custom attribution text
+      mapRef.current.addControl(
+        new mapboxgl.AttributionControl({
+          customAttribution:
+            "Notice: Train motion is purely aesthetic - may not reflect actual speed | MBTA data © MBTA",
+        }),
+        "bottom-right",
+      );
 
       // Add zoom controls
       mapRef.current.addControl(new mapboxgl.NavigationControl(), "top-left");
@@ -468,6 +483,11 @@ const MapComponent: React.FC = () => {
           .setRotation(snappedBearing)
           .setPopup(new mapboxgl.Popup().setText(vehicle.attributes.label))
           .addTo(mapRef.current!);
+
+        marker.getElement().addEventListener("click", () => {
+          setSelectedVehicle(vehicle);
+        });
+
         markersRef.current[id] = marker;
         const now = Date.now();
         animationStateRef.current[id] = {
