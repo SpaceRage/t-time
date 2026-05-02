@@ -43,16 +43,59 @@ lineFeatures.features.forEach((feature) => {
   if (feature.geometry.type === "LineString") {
     feature.geometry.coordinates = interpolateLine(
       feature.geometry.coordinates,
-      4
+      4,
     ); // 10 segments for interpolation
   }
 });
 
+// Helper function to convert bearing and speed to lng/lat displacement
+const getDisplacementFromBearingAndSpeed = (
+  bearing: number,
+  speedMps: number,
+  timeDeltaSec: number,
+) => {
+  // bearing is in degrees (0-360), with 0 being north
+  // speedMps is in meters per second
+  const distanceMeters = speedMps * timeDeltaSec;
+
+  // Convert bearing to radians
+  const bearingRad = (bearing * Math.PI) / 180;
+
+  // Earth's radius in meters
+  const earthRadiusMeters = 6371000;
+
+  // Calculate displacement in lng/lat (approximately, for small distances)
+  const dLat = (distanceMeters / earthRadiusMeters) * (180 / Math.PI);
+  const dLng =
+    ((distanceMeters / earthRadiusMeters) * (180 / Math.PI)) /
+    Math.cos((bearing * Math.PI) / 180);
+
+  // Convert bearing to displacement components
+  const dLatComponent = Math.cos(bearingRad) * dLat;
+  const dLngComponent = Math.sin(bearingRad) * dLng;
+
+  return {
+    dLat: dLatComponent,
+    dLng: dLngComponent,
+  };
+};
+
+interface MarkerAnimationState {
+  startLat: number;
+  startLng: number;
+  targetLat: number;
+  targetLng: number;
+  startTime: number;
+  duration: number; // milliseconds
+}
+
 const MapComponent: React.FC = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null); // Store the Mapbox map instance
-  const { vehicles } = useVehicles(); // Access the vehicles from the context
-  const markersRef = useRef<{ [key: string]: mapboxgl.Marker }>({}); // Store markers by vehicle ID
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const { vehicles, motionData, lastUpdated } = useVehicles();
+  const markersRef = useRef<{ [key: string]: mapboxgl.Marker }>({});
+  const animationStateRef = useRef<{ [key: string]: MarkerAnimationState }>({});
+  const animationFrameRef = useRef<number>();
 
   useEffect(() => {
     const accessToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_KEY;
@@ -128,6 +171,9 @@ const MapComponent: React.FC = () => {
     // Clean up on unmount
     return () => {
       Object.values(markersRef.current).forEach((marker) => marker.remove());
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
   }, []); // Run only once on mount
 
@@ -142,7 +188,7 @@ const MapComponent: React.FC = () => {
       markerElement.style.width = "6px"; // Set the width of the marker
       markerElement.style.height = "6px"; // Set the height of the marker
       markerElement.style.opacity = "0.01"; // Set the opacity of the marker
-      markerElement.style.backgroundImage = `url('https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/MBTA.svg/1200px-MBTA.svg.png')`; // Set the image URL
+      markerElement.style.backgroundImage = `url('https://en.wikipedia.org/wiki/Massachusetts_Bay_Transportation_Authority#/media/File:MBTA.svg')`; // Set the image URL
       markerElement.style.backgroundSize = "contain"; // Make sure the image fits the marker
       markerElement.style.backgroundRepeat = "no-repeat"; // Prevent repeating the image
 
@@ -164,43 +210,121 @@ const MapComponent: React.FC = () => {
     return routeColorMap[routeId] || "gray"; // Default to gray if no color is found
   };
 
+  // Animation loop to smoothly update marker positions
+  const updateMarkerPositions = () => {
+    const now = Date.now();
+
+    for (const vehicleId in animationStateRef.current) {
+      const state = animationStateRef.current[vehicleId];
+      const marker = markersRef.current[vehicleId];
+
+      if (!marker) continue;
+
+      // Calculate progress (0 to 1)
+      const elapsed = now - state.startTime;
+      const progress = Math.min(elapsed / state.duration, 1);
+
+      // Interpolate position
+      const currentLng =
+        state.startLng + (state.targetLng - state.startLng) * progress;
+      const currentLat =
+        state.startLat + (state.targetLat - state.startLat) * progress;
+
+      marker.setLngLat([currentLng, currentLat]);
+
+      // Remove animation state when complete
+      if (progress >= 1) {
+        delete animationStateRef.current[vehicleId];
+      }
+    }
+
+    // Continue animation loop if there are active animations
+    if (Object.keys(animationStateRef.current).length > 0) {
+      animationFrameRef.current = requestAnimationFrame(updateMarkerPositions);
+    }
+  };
+
   // Function to update markers based on vehicle data
   const updateMarkers = () => {
     vehicles.forEach((vehicle) => {
       const { id, attributes, relationships } = vehicle;
-      const { latitude, longitude, bearing } = attributes;
-      console.log(bearing);
-      const routeId = relationships.route.data.id; // Get the route ID
+      const { latitude, longitude, bearing, speed } = attributes;
+      const routeId = relationships.route.data.id;
 
       // Determine marker color based on route ID
-      const markerColor = getMarkerColor(routeId); // Get color using the helper function
-      const markerSVG = createMarkerSVG(markerColor); // Create SVG for the marker
+      const markerColor = getMarkerColor(routeId);
+      const markerSVG = createMarkerSVG(markerColor);
 
       // If marker doesn't exist, create a new one
       if (!markersRef.current[id]) {
         const marker = new mapboxgl.Marker({
           element: new DOMParser().parseFromString(markerSVG, "image/svg+xml")
-            .documentElement, // Set the SVG as the marker element
+            .documentElement,
         })
           .setLngLat([longitude, latitude])
-          .setPopup(new mapboxgl.Popup().setText(vehicle.attributes.label)) // Optional popup
-          .addTo(mapRef.current!); // Use the current map instance
-        markersRef.current[id] = marker; // Store the marker
+          .setPopup(new mapboxgl.Popup().setText(vehicle.attributes.label))
+          .addTo(mapRef.current!);
+        markersRef.current[id] = marker;
+        const now = Date.now();
+        animationStateRef.current[id] = {
+          startLat: latitude,
+          startLng: longitude,
+          targetLat: latitude,
+          targetLng: longitude,
+          startTime: now,
+          duration: 0,
+        };
       } else {
-        // If marker exists, update its position
-        markersRef.current[id].setLngLat([longitude, latitude]);
-        markersRef.current[id].setRotation(bearing);
+        // If marker exists, set up animation to new position
+        const marker = markersRef.current[id];
+        const motionInfo = motionData[id];
+
+        // Get current marker position
+        const currentPos = marker.getLngLat();
+
+        // Get time since last update
+        const now = Date.now();
+        const lastUpdateTime = motionInfo?.lastUpdated?.getTime() ?? now;
+        const timeSinceUpdate = now - lastUpdateTime;
+
+        // Estimate the animation duration based on time since last update
+        // We'll animate over the expected time until the next update
+        // Assuming updates come roughly every 4-5 seconds
+        const expectedUpdateInterval = 5000; // 5 seconds
+        const animationDuration = Math.min(
+          expectedUpdateInterval,
+          Math.max(500, timeSinceUpdate * 0.8),
+        ); // Animate over 80% of the expected update interval
+
+        // Set up animation state
+        animationStateRef.current[id] = {
+          startLat: currentPos.lat,
+          startLng: currentPos.lng,
+          targetLat: latitude,
+          targetLng: longitude,
+          startTime: now,
+          duration: animationDuration,
+        };
+
+        // Update rotation immediately
+        marker.setRotation(bearing);
 
         // Update the marker's SVG if the color has changed
-        const currentSVG = markersRef.current[id].getElement();
+        const currentSVG = marker.getElement();
         const currentColor = currentSVG
           .querySelector("circle")
           ?.getAttribute("fill");
 
         if (currentColor !== markerColor) {
           currentSVG.querySelector("circle")!.setAttribute("fill", markerColor);
-          // Make z-index higher to make sure the marker is visible
           currentSVG.style.zIndex = "100";
+        }
+
+        // Start animation if not already running
+        if (!animationFrameRef.current) {
+          animationFrameRef.current = requestAnimationFrame(
+            updateMarkerPositions,
+          );
         }
       }
     });
@@ -209,16 +333,17 @@ const MapComponent: React.FC = () => {
   // Effect to add station markers on map load
   useEffect(() => {
     if (mapRef.current) {
-      addStationMarkers(); // Add station markers after the map is loaded
+      addStationMarkers();
     }
-  }, [mapRef.current]); // Re-run only when the map is loaded
+  }, [mapRef.current]);
 
   // Effect to update markers when vehicles change
+  // Use lastUpdated timestamp as dependency to avoid array size issues
   useEffect(() => {
     if (mapRef.current) {
-      updateMarkers(); // Update markers based on the latest vehicles
+      updateMarkers();
     }
-  }, [vehicles]); // Re-run only when vehicles change
+  }, [lastUpdated]);
 
   return (
     <div

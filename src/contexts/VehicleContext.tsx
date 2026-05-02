@@ -41,14 +41,22 @@ export interface Vehicle {
   };
 }
 
+export interface VehicleMotionData {
+  lastLat: number;
+  lastLng: number;
+  lastUpdated: Date;
+}
+
 interface VehicleState {
   vehicles: Record<string, Vehicle>;
+  motionData: Record<string, VehicleMotionData>;
   isInitialized: boolean;
   lastUpdated: Date | null;
 }
 
 interface VehicleContextType {
   vehicles: Vehicle[];
+  motionData: Record<string, VehicleMotionData>;
   isInitialized: boolean;
   lastUpdated: Date | null;
   vehicleCount: number;
@@ -61,6 +69,7 @@ const VehicleContext = createContext<VehicleContextType | undefined>(undefined);
 export function VehicleProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<VehicleState>({
     vehicles: {},
+    motionData: {},
     isInitialized: false,
     lastUpdated: null,
   });
@@ -89,18 +98,25 @@ export function VehicleProvider({ children }: { children: React.ReactNode }) {
 
         const data = await response.json();
         const vehiclesData: Record<string, Vehicle> = {};
+        const motionData: Record<string, VehicleMotionData> = {};
 
         // Populate vehiclesData with initial data
         data.data.forEach((vehicle: Vehicle) => {
           const routeId = vehicle.relationships.route.data.id;
           if (validRouteIds.has(routeId) || routeId.startsWith("CR")) {
             vehiclesData[vehicle.id] = vehicle;
+            motionData[vehicle.id] = {
+              lastLat: vehicle.attributes.latitude,
+              lastLng: vehicle.attributes.longitude,
+              lastUpdated: new Date(vehicle.attributes.updated_at),
+            };
           }
         });
 
         setState((prev) => ({
           ...prev,
           vehicles: vehiclesData,
+          motionData,
           isInitialized: true,
           lastUpdated: new Date(),
         }));
@@ -128,6 +144,7 @@ export function VehicleProvider({ children }: { children: React.ReactNode }) {
 
         setState((prev) => {
           const newVehicles = { ...prev.vehicles };
+          const newMotionData = { ...prev.motionData };
           const isUpdate = vehicle.id in newVehicles;
           if (isUpdate) {
             const previousVehicle = newVehicles[vehicle.id];
@@ -135,13 +152,25 @@ export function VehicleProvider({ children }: { children: React.ReactNode }) {
               new Date(vehicle.attributes.updated_at) >
               new Date(previousVehicle.attributes.updated_at)
             ) {
+              // Store previous position before updating
+              newMotionData[vehicle.id] = {
+                lastLat: previousVehicle.attributes.latitude,
+                lastLng: previousVehicle.attributes.longitude,
+                lastUpdated: new Date(previousVehicle.attributes.updated_at),
+              };
               newVehicles[vehicle.id] = vehicle;
             }
           } else {
+            newMotionData[vehicle.id] = {
+              lastLat: vehicle.attributes.latitude,
+              lastLng: vehicle.attributes.longitude,
+              lastUpdated: new Date(vehicle.attributes.updated_at),
+            };
             newVehicles[vehicle.id] = vehicle;
           }
           return {
             vehicles: newVehicles,
+            motionData: newMotionData,
             isInitialized: true,
             lastUpdated: new Date(),
           };
@@ -199,6 +228,7 @@ export function VehicleProvider({ children }: { children: React.ReactNode }) {
 
   const value = {
     vehicles: Object.values(state.vehicles),
+    motionData: state.motionData,
     isInitialized: state.isInitialized,
     lastUpdated: state.lastUpdated,
     vehicleCount: Object.keys(state.vehicles).length,
