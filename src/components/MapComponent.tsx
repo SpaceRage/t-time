@@ -103,7 +103,11 @@ const findNearestPointOnRail = (point: Coord, routeId?: string): Coord => {
 
   railLineCoordinateSets.forEach((lineCoords) => {
     for (let i = 0; i < lineCoords.length - 1; i++) {
-      const candidate = nearestPointOnSegment(point, lineCoords[i], lineCoords[i + 1]);
+      const candidate = nearestPointOnSegment(
+        point,
+        lineCoords[i],
+        lineCoords[i + 1],
+      );
       const candidateDistSq = sqDistance(point, candidate);
       if (candidateDistSq < bestDistSq) {
         bestDistSq = candidateDistSq;
