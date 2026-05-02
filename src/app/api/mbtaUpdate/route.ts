@@ -15,19 +15,41 @@ export async function GET(req: NextRequest) {
       throw new Error(`MBTA API responded with status: ${response.status}`);
     }
 
-    const { readable, writable } = new TransformStream();
+    const { readable, writable } = new TransformStream<string, string>();
     const textDecoder = new TextDecoderStream();
 
-    // Debug the incoming stream
+    // Parse SSE format and convert to JSON messages
     response.body
       ?.pipeThrough(textDecoder)
       .pipeThrough(
         new TransformStream({
           transform(chunk, controller) {
-            // console.log("Server received chunk:", chunk);
-            controller.enqueue(chunk);
+            // Split by double newlines (SSE message separator)
+            const messages = chunk.split("\n\n");
+
+            messages.forEach((message) => {
+              if (!message.trim()) return;
+
+              let eventType = "message";
+              let data = "";
+
+              // Parse SSE format
+              const lines = message.split("\n");
+              lines.forEach((line) => {
+                if (line.startsWith("event:")) {
+                  eventType = line.substring(6).trim();
+                } else if (line.startsWith("data:")) {
+                  data = line.substring(5).trim();
+                }
+              });
+
+              if (data) {
+                // Send as standardized message format
+                controller.enqueue(`event: ${eventType}\ndata: ${data}\n\n`);
+              }
+            });
           },
-        })
+        }),
       )
       .pipeTo(writable);
 
@@ -43,7 +65,7 @@ export async function GET(req: NextRequest) {
     console.error("MBTA API Error:", error);
     return NextResponse.json(
       { error: "Failed to connect to MBTA API" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

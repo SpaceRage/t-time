@@ -83,7 +83,7 @@ export function VehicleProvider({ children }: { children: React.ReactNode }) {
 
         if (!response.ok) {
           throw new Error(
-            `Initial vehicles API responded with status: ${response.status}`
+            `Initial vehicles API responded with status: ${response.status}`,
           );
         }
 
@@ -113,7 +113,9 @@ export function VehicleProvider({ children }: { children: React.ReactNode }) {
     fetchInitialVehicles();
 
     const eventSource = new EventSource("/api/mbtaUpdate");
-    let initializationTimeout: NodeJS.Timeout;
+    let reconnectTimeout: NodeJS.Timeout;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 5;
 
     const handleVehicleUpdate = (event: MessageEvent) => {
       try {
@@ -121,7 +123,6 @@ export function VehicleProvider({ children }: { children: React.ReactNode }) {
         const routeId = vehicle.relationships.route.data.id;
 
         if (!validRouteIds.has(routeId) && !routeId.startsWith("CR")) {
-          console.log(`Ignoring vehicle ${vehicle.id} (route ID is invalid)`);
           return; // Ignore this vehicle
         }
 
@@ -150,32 +151,47 @@ export function VehicleProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    const startInitializationTimer = () => {
-      clearTimeout(initializationTimeout);
-      initializationTimeout = setTimeout(() => {
-        console.log("Initial state setup completed");
-      }, 3000);
-    };
+    // Listen for 'message' events (default SSE event type)
+    eventSource.addEventListener("message", handleVehicleUpdate);
 
-    eventSource.addEventListener("update", (event) => {
-      handleVehicleUpdate(event);
-      startInitializationTimer();
-    });
+    // Also listen for 'update' events in case the API sends them
+    eventSource.addEventListener("update", handleVehicleUpdate);
 
     eventSource.onerror = (error) => {
       console.error("EventSource error:", error);
       eventSource.close();
+
+      // Attempt to reconnect
+      if (reconnectAttempts < maxReconnectAttempts) {
+        reconnectAttempts++;
+        const delayMs = Math.min(
+          1000 * Math.pow(2, reconnectAttempts - 1),
+          30000,
+        );
+        console.log(
+          `Reconnecting in ${delayMs}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`,
+        );
+        reconnectTimeout = setTimeout(() => {
+          fetchInitialVehicles();
+          const newEventSource = new EventSource("/api/mbtaUpdate");
+          newEventSource.addEventListener("message", handleVehicleUpdate);
+          newEventSource.addEventListener("update", handleVehicleUpdate);
+          newEventSource.onerror = eventSource.onerror;
+        }, delayMs);
+      } else {
+        console.error("Max reconnection attempts reached");
+      }
     };
 
     return () => {
       eventSource.close();
-      clearTimeout(initializationTimeout);
+      clearTimeout(reconnectTimeout);
     };
   }, []);
 
   const getVehiclesByRoute = (routeId: string) => {
     return Object.values(state.vehicles).filter(
-      (vehicle) => vehicle.relationships.route.data.id === routeId
+      (vehicle) => vehicle.relationships.route.data.id === routeId,
     );
   };
 
