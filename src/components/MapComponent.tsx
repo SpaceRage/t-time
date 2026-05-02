@@ -272,6 +272,10 @@ interface MarkerAnimationState {
   duration: number; // milliseconds
   routeId: string;
   bearing: number;
+  lastSnappedTime: number; // milliseconds
+  lastSnappedLng: number;
+  lastSnappedLat: number;
+  lastSnappedBearing: number;
 }
 
 const MapComponent: React.FC = () => {
@@ -413,19 +417,14 @@ const MapComponent: React.FC = () => {
       const elapsed = now - state.startTime;
       const progress = Math.min(elapsed / state.duration, 1);
 
-      // Interpolate position
+      // Interpolate between pre-snapped start and end positions
       const currentLng =
         state.startLng + (state.targetLng - state.startLng) * progress;
       const currentLat =
         state.startLat + (state.targetLat - state.startLat) * progress;
-      const snappedRailState = getNearestRailPointAndBearing(
-        [currentLng, currentLat],
-        state.routeId,
-      );
-      marker.setLngLat(snappedRailState.point);
-      marker.setRotation(
-        snapBearingToLineDirection(snappedRailState.bearing, state.bearing),
-      );
+
+      marker.setLngLat([currentLng, currentLat]);
+      marker.setRotation(state.bearing);
 
       // Remove animation state when complete
       if (progress >= 1) {
@@ -480,6 +479,10 @@ const MapComponent: React.FC = () => {
           duration: 0,
           routeId,
           bearing: snappedBearing,
+          lastSnappedTime: now,
+          lastSnappedLng: snappedLng,
+          lastSnappedLat: snappedLat,
+          lastSnappedBearing: snappedBearing,
         };
       } else {
         // If marker exists, set up animation to new position
@@ -488,6 +491,13 @@ const MapComponent: React.FC = () => {
 
         // Get current marker position
         const currentPos = marker.getLngLat();
+
+        // Snap the current position to ensure both start and end are on the rail
+        const snappedStartState = getNearestRailPointAndBearing(
+          [currentPos.lng, currentPos.lat],
+          routeId,
+        );
+        const [snappedStartLng, snappedStartLat] = snappedStartState.point;
 
         // Get time since last update
         const now = Date.now();
@@ -501,27 +511,39 @@ const MapComponent: React.FC = () => {
           Math.max(500, timeSinceUpdate * 0.8),
         );
 
-        // Set up animation state
-        const projectedStart = findNearestPointOnRail(
-          [currentPos.lng, currentPos.lat],
-          routeId,
-        );
-        const animationDuration = getAnimationDurationMs(
-          projectedStart,
+        // Check if the jump is large (e.g., GPS error, service change, or data issue)
+        const distanceToNewLocation = haversineDistanceMeters(
+          [snappedStartLng, snappedStartLat],
           [snappedLng, snappedLat],
-          speed,
-          fallbackDuration,
         );
+        const TELEPORT_THRESHOLD_METERS = 500;
+
+        // If jump exceeds threshold, teleport instantly; otherwise animate smoothly
+        let animationDuration;
+        if (distanceToNewLocation > TELEPORT_THRESHOLD_METERS) {
+          animationDuration = 0; // Instant teleport
+        } else {
+          animationDuration = getAnimationDurationMs(
+            [snappedStartLng, snappedStartLat],
+            [snappedLng, snappedLat],
+            speed,
+            fallbackDuration,
+          );
+        }
 
         animationStateRef.current[id] = {
-          startLat: projectedStart[1],
-          startLng: projectedStart[0],
+          startLat: snappedStartLat,
+          startLng: snappedStartLng,
           targetLat: snappedLat,
           targetLng: snappedLng,
           startTime: now,
           duration: animationDuration,
           routeId,
           bearing: snappedBearing,
+          lastSnappedTime: now,
+          lastSnappedLng: snappedStartLng,
+          lastSnappedLat: snappedStartLat,
+          lastSnappedBearing: snappedBearing,
         };
 
         // Update rotation immediately
