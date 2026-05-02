@@ -48,36 +48,71 @@ lineFeatures.features.forEach((feature) => {
   }
 });
 
-// Helper function to convert bearing and speed to lng/lat displacement
-const getDisplacementFromBearingAndSpeed = (
-  bearing: number,
-  speedMps: number,
-  timeDeltaSec: number,
-) => {
-  // bearing is in degrees (0-360), with 0 being north
-  // speedMps is in meters per second
-  const distanceMeters = speedMps * timeDeltaSec;
+type Coord = [number, number];
 
-  // Convert bearing to radians
-  const bearingRad = (bearing * Math.PI) / 180;
+const sqDistance = (a: Coord, b: Coord) => {
+  const dx = a[0] - b[0];
+  const dy = a[1] - b[1];
+  return dx * dx + dy * dy;
+};
 
-  // Earth's radius in meters
-  const earthRadiusMeters = 6371000;
+const nearestPointOnSegment = (p: Coord, a: Coord, b: Coord): Coord => {
+  const abx = b[0] - a[0];
+  const aby = b[1] - a[1];
+  const abLenSq = abx * abx + aby * aby;
 
-  // Calculate displacement in lng/lat (approximately, for small distances)
-  const dLat = (distanceMeters / earthRadiusMeters) * (180 / Math.PI);
-  const dLng =
-    ((distanceMeters / earthRadiusMeters) * (180 / Math.PI)) /
-    Math.cos((bearing * Math.PI) / 180);
+  if (abLenSq === 0) {
+    return a;
+  }
 
-  // Convert bearing to displacement components
-  const dLatComponent = Math.cos(bearingRad) * dLat;
-  const dLngComponent = Math.sin(bearingRad) * dLng;
+  const apx = p[0] - a[0];
+  const apy = p[1] - a[1];
+  const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq));
 
-  return {
-    dLat: dLatComponent,
-    dLng: dLngComponent,
-  };
+  return [a[0] + t * abx, a[1] + t * aby];
+};
+
+const rapidRailLineCoordinateSets: Coord[][] = lineFeatures.features
+  .filter((feature) => feature.geometry.type === "LineString")
+  .map(
+    (feature) =>
+      (feature.geometry as unknown as { coordinates: Coord[] }).coordinates,
+  );
+
+const commuterRailLineCoordinateSets: Coord[][] = commuterFeatures.features
+  .filter((feature) => feature.geometry.type === "MultiLineString")
+  .flatMap(
+    (feature) =>
+      (feature.geometry as unknown as { coordinates: Coord[][] }).coordinates,
+  );
+
+const allRailLineCoordinateSets: Coord[][] = [
+  ...rapidRailLineCoordinateSets,
+  ...commuterRailLineCoordinateSets,
+];
+
+const findNearestPointOnRail = (point: Coord, routeId?: string): Coord => {
+  const railLineCoordinateSets = routeId
+    ? routeId.startsWith("CR")
+      ? commuterRailLineCoordinateSets
+      : rapidRailLineCoordinateSets
+    : allRailLineCoordinateSets;
+
+  let bestPoint: Coord = point;
+  let bestDistSq = Number.POSITIVE_INFINITY;
+
+  railLineCoordinateSets.forEach((lineCoords) => {
+    for (let i = 0; i < lineCoords.length - 1; i++) {
+      const candidate = nearestPointOnSegment(point, lineCoords[i], lineCoords[i + 1]);
+      const candidateDistSq = sqDistance(point, candidate);
+      if (candidateDistSq < bestDistSq) {
+        bestDistSq = candidateDistSq;
+        bestPoint = candidate;
+      }
+    }
+  });
+
+  return bestPoint;
 };
 
 interface MarkerAnimationState {
@@ -180,21 +215,25 @@ const MapComponent: React.FC = () => {
   // Function to add station markers
   const addStationMarkers = () => {
     stopFeatures.features.forEach((feature) => {
-      const { name, lines } = feature.properties;
+      const { name } = feature.properties;
       const [longitude, latitude] = feature.geometry.coordinates;
+      const [snappedLng, snappedLat] = findNearestPointOnRail([
+        longitude,
+        latitude,
+      ]);
 
       // Create a new HTML element for the marker
       const markerElement = document.createElement("div");
-      markerElement.style.width = "6px"; // Set the width of the marker
-      markerElement.style.height = "6px"; // Set the height of the marker
+      markerElement.style.width = "8px"; // Set the width of the marker
+      markerElement.style.height = "8px"; // Set the height of the marker
       markerElement.style.opacity = "0.01"; // Set the opacity of the marker
-      markerElement.style.backgroundImage = `url('https://en.wikipedia.org/wiki/Massachusetts_Bay_Transportation_Authority#/media/File:MBTA.svg')`; // Set the image URL
+      markerElement.style.backgroundImage = `url('https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/MBTA.svg/960px-MBTA.svg.png')`; // Set the image URL
       markerElement.style.backgroundSize = "contain"; // Make sure the image fits the marker
       markerElement.style.backgroundRepeat = "no-repeat"; // Prevent repeating the image
 
       // Create marker
       const marker = new mapboxgl.Marker(markerElement)
-        .setLngLat([longitude, latitude])
+        .setLngLat([snappedLng, snappedLat])
         .setPopup(new mapboxgl.Popup().setText(name)) // Optional popup
         .addTo(mapRef.current!); // Use the current map instance
 
@@ -229,7 +268,6 @@ const MapComponent: React.FC = () => {
         state.startLng + (state.targetLng - state.startLng) * progress;
       const currentLat =
         state.startLat + (state.targetLat - state.startLat) * progress;
-
       marker.setLngLat([currentLng, currentLat]);
 
       // Remove animation state when complete
@@ -248,8 +286,12 @@ const MapComponent: React.FC = () => {
   const updateMarkers = () => {
     vehicles.forEach((vehicle) => {
       const { id, attributes, relationships } = vehicle;
-      const { latitude, longitude, bearing, speed } = attributes;
+      const { latitude, longitude, bearing } = attributes;
       const routeId = relationships.route.data.id;
+      const [snappedLng, snappedLat] = findNearestPointOnRail(
+        [longitude, latitude],
+        routeId,
+      );
 
       // Determine marker color based on route ID
       const markerColor = getMarkerColor(routeId);
@@ -261,16 +303,16 @@ const MapComponent: React.FC = () => {
           element: new DOMParser().parseFromString(markerSVG, "image/svg+xml")
             .documentElement,
         })
-          .setLngLat([longitude, latitude])
+          .setLngLat([snappedLng, snappedLat])
           .setPopup(new mapboxgl.Popup().setText(vehicle.attributes.label))
           .addTo(mapRef.current!);
         markersRef.current[id] = marker;
         const now = Date.now();
         animationStateRef.current[id] = {
-          startLat: latitude,
-          startLng: longitude,
-          targetLat: latitude,
-          targetLng: longitude,
+          startLat: snappedLat,
+          startLng: snappedLng,
+          targetLat: snappedLat,
+          targetLng: snappedLng,
           startTime: now,
           duration: 0,
         };
@@ -300,8 +342,8 @@ const MapComponent: React.FC = () => {
         animationStateRef.current[id] = {
           startLat: currentPos.lat,
           startLng: currentPos.lng,
-          targetLat: latitude,
-          targetLng: longitude,
+          targetLat: snappedLat,
+          targetLng: snappedLng,
           startTime: now,
           duration: animationDuration,
         };
