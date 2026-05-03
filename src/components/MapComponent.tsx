@@ -9,7 +9,7 @@ import { stopFeatures } from "../data/stations";
 import { interpolateLine } from "../lib/utils";
 
 // Define the color mapping based on route IDs
-const routeColorMap: { [key: string]: string } = {
+export const routeColorMap: { [key: string]: string } = {
   Red: "#990000",
   "Green-B": "#007700",
   "Green-C": "#007700",
@@ -20,7 +20,7 @@ const routeColorMap: { [key: string]: string } = {
   // Add other routes and their corresponding colors as needed
 };
 
-const lineColorMap: { [key: string]: string } = {
+export const lineColorMap: { [key: string]: string } = {
   SILVER: "#C0C0C0", // Silver line color
   RED: "#990000", // Red line color
   GREEN: "#007700", // Green line color

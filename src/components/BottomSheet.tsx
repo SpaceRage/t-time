@@ -1,9 +1,10 @@
 "use client";
 
+import { routeColorMap } from "@/components/MapComponent";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const SNAP = {
-  collapsed: 80,
+  collapsed: 100,
   half: 320,
   full: typeof window !== "undefined" ? window.innerHeight - 60 : 720,
 };
@@ -33,7 +34,7 @@ const styles = {
     touchAction: "none" as const,
   },
   handleArea: {
-    padding: "12px 0 8px",
+    padding: "12px 0 24px",
     cursor: "grab" as const,
     flexShrink: 0,
     userSelect: "none" as const,
@@ -52,8 +53,8 @@ const styles = {
   mbtaBar: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    padding: "0 16px 12px",
+    gap: 16,
+    padding: "0 16px",
     width: "100%",
     boxSizing: "border-box" as const,
   },
@@ -66,8 +67,8 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    fontWeight: 700,
-    fontSize: 13,
+    fontWeight: 800,
+    fontSize: 14,
     color: "#fff",
     letterSpacing: "-0.5px",
     fontFamily: "system-ui, sans-serif",
@@ -86,6 +87,14 @@ const styles = {
     color: "#F2F2F7",
     fontFamily: "system-ui, sans-serif",
   },
+};
+
+// Function to determine marker color based on route ID
+const getMarkerColor = (routeId: string): string => {
+  if (routeId.startsWith("CR")) {
+    return "purple"; // Color for route IDs starting with "CR"
+  }
+  return routeColorMap[routeId] || "gray"; // Default to gray if no color is found
 };
 
 interface BottomSheetProps {
@@ -178,13 +187,20 @@ export default function BottomSheet({
         <div style={styles.handle} />
         {(title || subtitle) && (
           <div style={styles.mbtaBar}>
-            <div style={styles.mbtaLogo}>T</div>
+            <div
+              style={{
+                ...styles.mbtaLogo,
+                backgroundColor: title ? getMarkerColor(title) : "gray",
+              }}
+            >
+              T
+            </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
               {title && (
                 <span
                   style={{
-                    fontSize: 15,
-                    fontWeight: 600,
+                    fontSize: 18,
+                    fontWeight: 800,
                     color: "#F2F2F7",
                     fontFamily: "system-ui, sans-serif",
                   }}
@@ -195,7 +211,7 @@ export default function BottomSheet({
               {subtitle && (
                 <span
                   style={{
-                    fontSize: 12,
+                    fontSize: 14,
                     color: "#8E8E93",
                     fontFamily: "system-ui, sans-serif",
                   }}
