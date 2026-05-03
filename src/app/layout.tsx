@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { VehicleProvider } from "../contexts/VehicleContext";
 import "./globals.css";
@@ -17,6 +17,15 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "t-time",
   description: "Realtime tracking of MBTA vehicles",
+  themeColor: "#000000",
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-status-bar-style": "black-translucent",
+  },
+};
+
+export const viewport: Viewport = {
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
