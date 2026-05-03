@@ -1,9 +1,11 @@
+"use client";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const SNAP = {
   collapsed: 80,
   half: 320,
-  full: window.innerHeight - 60,
+  full: typeof window !== "undefined" ? window.innerHeight - 60 : 720,
 };
 
 const SNAP_POINTS = [SNAP.collapsed, SNAP.half, SNAP.full];

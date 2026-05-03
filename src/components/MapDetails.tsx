@@ -1,3 +1,5 @@
+"use client";
+
 import BottomSheet from "@/components/BottomSheet";
 import { Trip } from "@/types/trip";
 import { Vehicle } from "@/types/vehicle";

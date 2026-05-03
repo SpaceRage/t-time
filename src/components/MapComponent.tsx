@@ -345,7 +345,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ setSelectedVehicle }) => {
               "#000000", // Default color if no match is found
             ],
             "line-opacity": 0.8, // Adjust opacity as needed
-            "line-width": 4, // Adjust width as needed
+            "line-width": 6, // Adjust width as needed
           },
         });
 
@@ -366,7 +366,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ setSelectedVehicle }) => {
           paint: {
             "line-color": "#770077",
             "line-opacity": 0.8,
-            "line-width": 4,
+            "line-width": 6,
           },
         });
       });
@@ -393,8 +393,8 @@ const MapComponent: React.FC<MapComponentProps> = ({ setSelectedVehicle }) => {
 
       // Create a new HTML element for the marker
       const markerElement = document.createElement("div");
-      markerElement.style.width = "8px"; // Set the width of the marker
-      markerElement.style.height = "8px"; // Set the height of the marker
+      markerElement.style.width = "10px"; // Set the width of the marker
+      markerElement.style.height = "10px"; // Set the height of the marker
       markerElement.style.opacity = "0.01"; // Set the opacity of the marker
       markerElement.style.backgroundImage = `url('https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/MBTA.svg/960px-MBTA.svg.png')`; // Set the image URL
       markerElement.style.backgroundSize = "contain"; // Make sure the image fits the marker
