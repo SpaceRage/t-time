@@ -31,7 +31,7 @@ export const lineColorMap: { [key: string]: string } = {
 // Function to create an SVG marker
 const createMarkerSVG = (color: string) => {
   return `
-      <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg">
+      <svg width="30" height="30" viewBox="0 0 30 30" style="cursor: pointer;" xmlns="http://www.w3.org/2000/svg">
         <circle cx="15" cy="15" r="10" fill="${color}" />
         <polygon points="15,11 19,18 11,18" fill="white" />
       </svg>
@@ -226,6 +226,27 @@ const findNearestPointOnRail = (point: Coord, routeId?: string): Coord => {
   return getNearestRailPointAndBearing(point, routeId).point;
 };
 
+const stationLabelGeoJson = {
+  type: "FeatureCollection" as const,
+  features: stopFeatures.features.map((feature) => {
+    const { name } = feature.properties;
+    const [longitude, latitude] = feature.geometry.coordinates;
+    const [snappedLng, snappedLat] = findNearestPointOnRail([
+      longitude,
+      latitude,
+    ]);
+
+    return {
+      type: "Feature" as const,
+      properties: { name },
+      geometry: {
+        type: "Point" as const,
+        coordinates: [snappedLng, snappedLat] as Coord,
+      },
+    };
+  }),
+};
+
 const haversineDistanceMeters = (a: Coord, b: Coord) => {
   const earthRadiusMeters = 6371000;
   const toRadians = (value: number) => (value * Math.PI) / 180;
@@ -370,6 +391,39 @@ const MapComponent: React.FC<MapComponentProps> = ({
             "line-width": 6,
           },
         });
+
+        mapRef.current?.addSource("station-labels", {
+          type: "geojson",
+          data: stationLabelGeoJson,
+        });
+
+        mapRef.current?.addLayer({
+          id: "station-labels",
+          type: "symbol",
+          source: "station-labels",
+          minzoom: 10,
+          layout: {
+            "text-field": ["get", "name"],
+            "text-font": ["DIN Offc Pro Medium", "Arial Unicode MS Bold"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 10, 14, 13],
+            "text-offset": [0.9, 0],
+            "text-anchor": "left",
+          },
+          paint: {
+            "text-color": "#E5E7EB",
+            "text-halo-color": "#111827",
+            "text-halo-width": 1,
+            "text-opacity": [
+              "interpolate",
+              ["linear"],
+              ["zoom"],
+              11.4,
+              0,
+              13.2,
+              1,
+            ],
+          },
+        });
       });
     }
 
@@ -482,11 +536,15 @@ const MapComponent: React.FC<MapComponentProps> = ({
         })
           .setLngLat([snappedLng, snappedLat])
           .setRotation(snappedBearing)
-          .setPopup(new mapboxgl.Popup().setText(vehicle.attributes.label))
           .addTo(mapRef.current!);
 
         marker.getElement().addEventListener("click", () => {
           setSelectedVehicleId(id);
+          mapRef.current?.easeTo({
+            center: [snappedLng, snappedLat],
+            zoom: 16,
+            duration: 1000,
+          });
         });
 
         markersRef.current[id] = marker;
