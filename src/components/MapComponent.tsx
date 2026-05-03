@@ -128,7 +128,7 @@ const getNearestRailPointAndBearing = (
     ? routeId.startsWith("CR")
       ? commuterRailLineCoordinateSets
       : getRapidRailLineCoordinateSetsForRoute(routeId)
-    : allRailLineCoordinateSets;
+    : rapidRailLineCoordinateSets; // TEMP
 
   let bestPoint: Coord = point;
   let bestBearing = 0;
