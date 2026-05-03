@@ -458,7 +458,6 @@ const MapComponent: React.FC<MapComponentProps> = ({
       // Create marker
       const marker = new mapboxgl.Marker(markerElement)
         .setLngLat([snappedLng, snappedLat])
-        .setPopup(new mapboxgl.Popup().setText(name)) // Optional popup
         .addTo(mapRef.current!); // Use the current map instance
 
       markersRef.current[name] = marker; // Store marker by name or any unique identifier
