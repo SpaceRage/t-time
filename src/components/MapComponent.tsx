@@ -1,5 +1,4 @@
 import { useVehicles } from "@/contexts/VehicleContext"; // Adjust the path as necessary
-import { Vehicle } from "@/types/vehicle";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import React, { useEffect, useRef } from "react";
@@ -280,10 +279,12 @@ interface MarkerAnimationState {
 }
 
 interface MapComponentProps {
-  setSelectedVehicle: React.Dispatch<React.SetStateAction<Vehicle | null>>;
+  setSelectedVehicleId: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
-const MapComponent: React.FC<MapComponentProps> = ({ setSelectedVehicle }) => {
+const MapComponent: React.FC<MapComponentProps> = ({
+  setSelectedVehicleId,
+}) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const { vehicles, motionData, lastUpdated } = useVehicles();
@@ -485,7 +486,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ setSelectedVehicle }) => {
           .addTo(mapRef.current!);
 
         marker.getElement().addEventListener("click", () => {
-          setSelectedVehicle(vehicle);
+          setSelectedVehicleId(id);
         });
 
         markersRef.current[id] = marker;

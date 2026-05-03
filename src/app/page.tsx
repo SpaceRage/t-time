@@ -3,7 +3,6 @@
 import MapComponent from "@/components/MapComponent";
 import MapDetails from "@/components/MapDetails";
 import { useVehicles } from "@/contexts/VehicleContext";
-import { Vehicle } from "@/types/vehicle";
 import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
@@ -14,11 +13,17 @@ export default function Home() {
     throw new Error("Mapbox API key not found");
   }
 
-  const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(
+    null,
+  );
+
+  const selectedVehicle = selectedVehicleId
+    ? (vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? null)
+    : null;
 
   // Highlight updates
   useEffect(() => {
-    vehicles.forEach((vehicle: Vehicle) => {
+    vehicles.forEach((vehicle) => {
       const element = updatesRef.current[vehicle.id];
       if (element) {
         element.classList.add("bg-yellow-100");
@@ -31,7 +36,7 @@ export default function Home() {
 
   return (
     <div style={{ position: "relative", height: "100dvh" }}>
-      <MapComponent setSelectedVehicle={setSelectedVehicle} />
+      <MapComponent setSelectedVehicleId={setSelectedVehicleId} />
       <MapDetails vehicle={selectedVehicle} />
     </div>
   );
