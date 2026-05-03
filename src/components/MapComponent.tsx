@@ -451,7 +451,10 @@ const MapComponent: React.FC<MapComponentProps> = ({
       markerElement.style.width = "10px"; // Set the width of the marker
       markerElement.style.height = "10px"; // Set the height of the marker
       markerElement.style.opacity = "0.01"; // Set the opacity of the marker
-      markerElement.style.backgroundImage = `url('https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/MBTA.svg/960px-MBTA.svg.png')`; // Set the image URL
+      markerElement.style.backgroundColor = "white"; // Make the background transparent
+      markerElement.style.borderRadius = "50%"; // Make the marker circular
+      markerElement.style.border = "2px solid #222"; // Add a border to make it visible on the map
+      // markerElement.style.backgroundImage = `url('https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/MBTA.svg/960px-MBTA.svg.png')`; // Set the image URL
       markerElement.style.backgroundSize = "contain"; // Make sure the image fits the marker
       markerElement.style.backgroundRepeat = "no-repeat"; // Prevent repeating the image
 
