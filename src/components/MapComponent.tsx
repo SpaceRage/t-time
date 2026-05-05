@@ -38,6 +38,24 @@ const createMarkerSVG = (color: string) => {
     `;
 };
 
+const attachTrainMarkerClick = (
+  marker: mapboxgl.Marker,
+  map: mapboxgl.Map | null,
+  setSelectedVehicleId: React.Dispatch<React.SetStateAction<string | null>>,
+  vehicleId: string,
+) => {
+  marker.getElement().addEventListener("click", () => {
+    const { lng, lat } = marker.getLngLat();
+
+    setSelectedVehicleId(vehicleId);
+    map?.easeTo({
+      center: [lng, lat],
+      zoom: 16,
+      duration: 1000,
+    });
+  });
+};
+
 // Example of using the function with your GeoJSON data
 lineFeatures.features.forEach((feature) => {
   if (feature.geometry.type === "LineString") {
@@ -128,7 +146,7 @@ const getNearestRailPointAndBearing = (
     ? routeId.startsWith("CR")
       ? commuterRailLineCoordinateSets
       : getRapidRailLineCoordinateSetsForRoute(routeId)
-    : rapidRailLineCoordinateSets; // TEMP
+    : allRailLineCoordinateSets; // TEMP
 
   let bestPoint: Coord = point;
   let bestBearing = 0;
@@ -241,7 +259,7 @@ const stationLabelGeoJson = {
       properties: { name },
       geometry: {
         type: "Point" as const,
-        coordinates: [snappedLng, snappedLat] as Coord,
+        coordinates: [longitude, latitude] as Coord,
       },
     };
   }),
@@ -460,7 +478,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
 
       // Create marker
       const marker = new mapboxgl.Marker(markerElement)
-        .setLngLat([snappedLng, snappedLat])
+        .setLngLat([longitude, latitude])
         .addTo(mapRef.current!); // Use the current map instance
 
       markersRef.current[name] = marker; // Store marker by name or any unique identifier
@@ -540,14 +558,12 @@ const MapComponent: React.FC<MapComponentProps> = ({
           .setRotation(snappedBearing)
           .addTo(mapRef.current!);
 
-        marker.getElement().addEventListener("click", () => {
-          setSelectedVehicleId(id);
-          mapRef.current?.easeTo({
-            center: [snappedLng, snappedLat],
-            zoom: 16,
-            duration: 1000,
-          });
-        });
+        attachTrainMarkerClick(
+          marker,
+          mapRef.current,
+          setSelectedVehicleId,
+          id,
+        );
 
         markersRef.current[id] = marker;
         const now = Date.now();
