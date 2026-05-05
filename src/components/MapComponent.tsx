@@ -31,7 +31,7 @@ export const lineColorMap: { [key: string]: string } = {
 // Function to create an SVG marker
 const createMarkerSVG = (color: string) => {
   return `
-      <svg width="30" height="30" viewBox="0 0 30 30" style="cursor: pointer;" xmlns="http://www.w3.org/2000/svg">
+      <svg width="30" height="30" viewBox="0 0 30 30" style="cursor: pointer; z-index: 1;" xmlns="http://www.w3.org/2000/svg">
         <circle cx="15" cy="15" r="10" fill="${color}" />
         <polygon points="15,11 19,18 11,18" fill="white" />
       </svg>
